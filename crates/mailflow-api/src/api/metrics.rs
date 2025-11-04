@@ -121,17 +121,52 @@ pub async fn summary(
         .await
         .unwrap_or(0.0);
 
-    // Get queue count
+    // Get all queues
     let queues = ctx
         .sqs_client
         .list_queues()
         .send()
         .await
         .map_err(|e| ApiError::Aws(e.to_string()))?;
-    let active_queues = queues.queue_urls().len();
 
-    // Get DLQ message count (simplified - would need to query specific DLQ)
-    let dlq_messages = 0; // TODO: Query DLQ for message count
+    let queue_urls = queues.queue_urls();
+
+    // Count active queues (non-DLQ queues with messages)
+    let mut active_count = 0;
+    let mut dlq_message_count = 0;
+
+    for queue_url in queue_urls {
+        // Check if this is a DLQ (contains "dlq" in URL, case-insensitive)
+        let is_dlq = queue_url.to_lowercase().contains("dlq");
+
+        // Get queue attributes
+        let attrs = ctx
+            .sqs_client
+            .get_queue_attributes()
+            .queue_url(queue_url)
+            .attribute_names(aws_sdk_sqs::types::QueueAttributeName::ApproximateNumberOfMessages)
+            .send()
+            .await;
+
+        if let Ok(response) = attrs {
+            if let Some(attributes) = response.attributes() {
+                if let Some(count_str) = attributes
+                    .get(&aws_sdk_sqs::types::QueueAttributeName::ApproximateNumberOfMessages)
+                {
+                    if let Ok(count) = count_str.parse::<i32>() {
+                        if is_dlq {
+                            dlq_message_count += count;
+                        } else if count > 0 {
+                            active_count += 1;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    let active_queues = active_count;
+    let dlq_messages = dlq_message_count;
 
     Ok(Json(MetricsSummaryResponse {
         period: "24h".to_string(),

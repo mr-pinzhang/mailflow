@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
 /// JWT Claims structure based on the PRD specification
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Claims {
     /// Email address of the user
     pub email: String,
@@ -35,7 +35,7 @@ pub struct Claims {
 }
 
 /// Resource access definition
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Resource {
     pub host: String,
     pub method: String,
