@@ -1491,7 +1491,7 @@ jose jwt sign --iss mailflow --aud mailflow-dashboard --exp 24h \
 ### Appendix A: API Endpoint Summary
 
 | Endpoint                       | Method | Auth     | Purpose                  |
-|--------------------------------|--------|----------|--------------------------|
+| ------------------------------ | ------ | -------- | ------------------------ |
 | `/api/health`                  | GET    | No       | Health check             |
 | `/api/metrics/summary`         | GET    | Required | Metrics overview         |
 | `/api/metrics/timeseries`      | GET    | Required | Time series metrics      |
@@ -1508,7 +1508,7 @@ jose jwt sign --iss mailflow --aud mailflow-dashboard --exp 24h \
 ### Appendix B: Frontend Pages Summary
 
 | Page          | Route      | Purpose                               |
-|---------------|------------|---------------------------------------|
+| ------------- | ---------- | ------------------------------------- |
 | Overview      | `/`        | System health and metrics overview    |
 | Queues        | `/queues`  | Queue list and message inspection     |
 | Logs          | `/logs`    | CloudWatch logs viewer                |
@@ -1519,7 +1519,7 @@ jose jwt sign --iss mailflow --aud mailflow-dashboard --exp 24h \
 ### Appendix C: Technology Stack Summary
 
 | Component       | Technology                         |
-|-----------------|------------------------------------|
+| --------------- | ---------------------------------- |
 | Backend API     | Rust, Axum, Lambda Runtime         |
 | Frontend        | React, TypeScript, Vite            |
 | Admin Framework | Refine 4.x                         |
@@ -1537,7 +1537,7 @@ jose jwt sign --iss mailflow --aud mailflow-dashboard --exp 24h \
 **Document Approval**
 
 | Role             | Name | Date | Signature |
-|------------------|------|------|-----------|
+| ---------------- | ---- | ---- | --------- |
 | Product Manager  |      |      |           |
 | Engineering Lead |      |      |           |
 | Security Lead    |      |      |           |

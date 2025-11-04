@@ -95,3 +95,92 @@ Feel free to add anything you feel important to the PRD, but keep this dashboard
 The design should focus on high level interfaces and data flow, no need to consider the implementation details.
 
 Write a detailed PRD, design spec and implementation plan in @specs/0007-dashboard.md.
+
+## fix dashboard issue
+
+I've upgraded the UI with latest deps double check @dashboard/package.json. So make sure you use latest refine 5, antd 6, etc. and fix:
+
+```bash
+  VITE v7.1.12  ready in 186 ms
+
+  ➜  Local:   http://localhost:5173/
+  ➜  Network: use --host to expose
+  ➜  press h + enter to show help
+✘ [ERROR] No matching export in "node_modules/@refinedev/core/dist/index.mjs" for import "useResource"
+
+    node_modules/@refinedev/react-router-v6/dist/index.mjs:1:1498:
+      1 │ ....createElement(I,{...o,ref:r})})};import $ from"react";import{useResource as H}from"@refinedev/core";import N
+from"react";import{Route...
+        ╵                                                                  ~~~~~~~~~~~
+
+✘ [ERROR] No matching export in "node_modules/@refinedev/core/dist/index.mjs" for import "useResource"
+
+    node_modules/@refinedev/react-router-v6/dist/index.mjs:1:2753:
+      1 │ ...()=>T(o),[o]);return t?t(r):$.createElement(M,null,r)};import{useResource as Q,useGetToPath as V}from"@refinedev/core";import q
+from"r...
+        ╵                                                                  ~~~~~~~~~~~
+
+/Users/tchen/projects/mycode/rust/mailflow/dashboard/node_modules/esbuild/lib/main.js:1467
+  let error = new Error(text);
+              ^
+
+Error: Error during dependency optimization:
+
+✘ [ERROR] No matching export in "node_modules/@refinedev/core/dist/index.mjs" for import "useResource"
+
+    node_modules/@refinedev/react-router-v6/dist/index.mjs:1:1498:
+      1 │ ...import $ from"react";import{useResource as H}from"@refinedev/core...
+        ╵                               ~~~~~~~~~~~
+
+
+✘ [ERROR] No matching export in "node_modules/@refinedev/core/dist/index.mjs" for import "useResource"
+
+    node_modules/@refinedev/react-router-v6/dist/index.mjs:1:2753:
+      1 │ ...eElement(M,null,r)};import{useResource as Q,useGetToPath as V}fr...
+        ╵                               ~~~~~~~~~~~
+
+
+    at failureErrorWithLog (/Users/tchen/projects/mycode/rust/mailflow/dashboard/node_modules/esbuild/lib/main.js:1467:15)
+    at /Users/tchen/projects/mycode/rust/mailflow/dashboard/node_modules/esbuild/lib/main.js:926:25
+    at /Users/tchen/projects/mycode/rust/mailflow/dashboard/node_modules/esbuild/lib/main.js:1345:9
+    at process.processTicksAndRejections (node:internal/process/task_queues:105:5) {
+  errors: [Getter/Setter],
+  warnings: [Getter/Setter]
+}
+
+Node.js v24.10.0
+error Command failed with exit code 1.
+info Visit https://yarnpkg.com/en/docs/cli/run for documentation about this command.
+```
+
+also the dashboard directory looks weird - can you make sure this is correct? (dashboard under dashboard under dashboard, ...)
+
+```bash
+mailflow/dashboard on  master [!?⇡] is 📦 v0.2.2 via  v24.10.0
+❯ tree -d --gitignore
+.
+├── dashboard
+│   ├── dashboard
+│   │   └── src
+│   │       ├── components
+│   │       ├── dashboard
+│   │       │   └── src
+│   │       │       └── pages
+│   │       │           ├── config
+│   │       │           ├── dashboard
+│   │       │           ├── login
+│   │       │           ├── queues
+│   │       │           ├── storage
+│   │       │           └── test
+│   │       ├── providers
+│   │       └── utils
+│   └── src
+└── src
+    ├── pages
+    │   ├── login
+    │   └── queues
+    ├── providers
+    └── utils
+
+23 directories
+```

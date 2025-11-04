@@ -81,10 +81,27 @@ lambda-x86:
 	@echo ""
 	@echo "To deploy: cd infra && pulumi up"
 
+# Build dashboard frontend
+dashboard-build:
+	@echo "Building dashboard frontend..."
+	@cd dashboard && npm install && npm run build
+	@echo "✅ Dashboard built to dashboard/dist/"
+
+# Deploy dashboard to S3
+dashboard-deploy: dashboard-build
+	@echo "Deploying dashboard to S3..."
+	@aws s3 sync dashboard/dist/ s3://mailflow-dashboard-$(ENVIRONMENT)/ --delete
+	@echo "✅ Dashboard deployed to S3"
+	@echo "Note: CloudFront cache may need to be invalidated"
+
 # Deploy infrastructure with Pulumi
 deploy-infra:
 	@echo "Deploying infrastructure..."
 	@cd infra && pulumi up
+
+# Full deployment (Lambda + Dashboard + Infrastructure)
+deploy: lambda dashboard-build deploy-infra dashboard-deploy
+	@echo "✅ Full deployment complete!"
 
 # Clean build artifacts
 clean:
@@ -167,9 +184,12 @@ help:
 	@echo "  check          - Run all checks (fmt, lint, test)"
 	@echo ""
 	@echo "Deployment:"
-	@echo "  lambda         - Build Lambda functions (worker + API) for ARM64"
-	@echo "  lambda-x86     - Build Lambda functions for x86_64"
-	@echo "  deploy-infra   - Deploy infrastructure with Pulumi"
+	@echo "  lambda           - Build Lambda functions (worker + API) for ARM64"
+	@echo "  lambda-x86       - Build Lambda functions for x86_64"
+	@echo "  dashboard-build  - Build dashboard frontend (React)"
+	@echo "  dashboard-deploy - Deploy dashboard to S3"
+	@echo "  deploy-infra     - Deploy infrastructure with Pulumi"
+	@echo "  deploy           - Full deployment (Lambda + Dashboard + Infra)"
 	@echo ""
 	@echo "E2E Testing:"
 	@echo "  e2e-setup      - Setup E2E test environment"
