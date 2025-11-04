@@ -4,6 +4,7 @@ use axum::{
     extract::{Path, Query, State},
 };
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::{context::ApiContext, error::ApiError};
@@ -24,6 +25,17 @@ pub struct BucketInfo {
     pub oldest_object: Option<String>,
     #[serde(rename = "newestObject")]
     pub newest_object: Option<String>,
+    #[serde(rename = "contentTypeBreakdown")]
+    pub content_type_breakdown: Vec<ContentTypeStats>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ContentTypeStats {
+    #[serde(rename = "contentType")]
+    pub content_type: String,
+    pub count: usize,
+    #[serde(rename = "totalSizeBytes")]
+    pub total_size_bytes: i64,
 }
 
 #[derive(Debug, Deserialize)]
@@ -74,7 +86,7 @@ pub async fn stats(
             .send()
             .await;
 
-        let (object_count, total_size, oldest, newest) = match objects_result {
+        let (object_count, total_size, oldest, newest, breakdown) = match objects_result {
             Ok(result) => {
                 let count = result.contents().len();
                 let size: i64 = result.contents().iter().filter_map(|obj| obj.size()).sum();
@@ -93,9 +105,52 @@ pub async fn stats(
                     .and_then(|dt| chrono::DateTime::from_timestamp(dt.secs(), 0))
                     .map(|dt| dt.to_rfc3339());
 
-                (count, size, oldest_date, newest_date)
+                // Group by content type (inferred from file extension)
+                let mut content_type_map: HashMap<String, (usize, i64)> = HashMap::new();
+                for obj in result.contents() {
+                    let key = obj.key().unwrap_or("");
+                    let size = obj.size().unwrap_or(0);
+
+                    // Infer content type from extension
+                    let content_type = if key.ends_with(".pdf") {
+                        "application/pdf"
+                    } else if key.ends_with(".png") {
+                        "image/png"
+                    } else if key.ends_with(".jpg") || key.ends_with(".jpeg") {
+                        "image/jpeg"
+                    } else if key.ends_with(".gif") {
+                        "image/gif"
+                    } else if key.ends_with(".txt") {
+                        "text/plain"
+                    } else if key.ends_with(".html") || key.ends_with(".htm") {
+                        "text/html"
+                    } else if key.ends_with(".json") {
+                        "application/json"
+                    } else if key.ends_with(".zip") {
+                        "application/zip"
+                    } else if key.ends_with(".eml") {
+                        "message/rfc822"
+                    } else {
+                        "application/octet-stream"
+                    };
+
+                    let entry = content_type_map.entry(content_type.to_string()).or_insert((0, 0));
+                    entry.0 += 1;
+                    entry.1 += size;
+                }
+
+                let breakdown: Vec<ContentTypeStats> = content_type_map
+                    .into_iter()
+                    .map(|(content_type, (count, total_size_bytes))| ContentTypeStats {
+                        content_type,
+                        count,
+                        total_size_bytes,
+                    })
+                    .collect();
+
+                (count, size, oldest_date, newest_date, breakdown)
             }
-            Err(_) => (0, 0, None, None),
+            Err(_) => (0, 0, None, None, vec![]),
         };
 
         buckets.push(BucketInfo {
@@ -104,6 +159,7 @@ pub async fn stats(
             total_size_bytes: total_size,
             oldest_object: oldest,
             newest_object: newest,
+            content_type_breakdown: breakdown,
         });
     }
 

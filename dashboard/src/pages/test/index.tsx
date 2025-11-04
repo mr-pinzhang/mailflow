@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useCustom } from '@refinedev/core';
-import { Card, Tabs, Form, Input, Button, Select, message, Alert, Table } from 'antd';
-import { SendOutlined } from '@ant-design/icons';
+import { useCustom, useNavigation } from '@refinedev/core';
+import { Card, Tabs, Form, Input, Button, Select, message, Alert, Table, Upload, Space } from 'antd';
+import { SendOutlined, UploadOutlined, FileSearchOutlined } from '@ant-design/icons';
 import { apiClient } from '../../utils/api';
 
 const { TextArea } = Input;
 
 export const TestEmailPage = () => {
   const [result, setResult] = useState<any>(null);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const { push } = useNavigation();
 
   const { query: historyQuery } = useCustom({
     url: '/test/history',
@@ -19,12 +21,43 @@ export const TestEmailPage = () => {
   const [sendingInbound, setSendingInbound] = useState(false);
   const [sendingOutbound, setSendingOutbound] = useState(false);
 
+  const handleFileUpload = (file: File) => {
+    // Check total size
+    const totalSize = attachments.reduce((sum, att) => sum + att.size, 0) + file.size;
+    if (totalSize > 10 * 1024 * 1024) {
+      message.error('Total attachment size cannot exceed 10 MB');
+      return false;
+    }
+
+    // Convert to base64
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const base64 = e.target?.result?.toString().split(',')[1];
+      setAttachments([
+        ...attachments,
+        {
+          filename: file.name,
+          contentType: file.type || 'application/octet-stream',
+          data: base64,
+          size: file.size,
+        },
+      ]);
+    };
+    reader.readAsDataURL(file);
+    return false; // Prevent default upload
+  };
+
   const onSendInbound = async (values: any) => {
     setSendingInbound(true);
     try {
-      const response = await apiClient.post('/test/inbound', values);
+      const payload = {
+        ...values,
+        attachments: attachments.length > 0 ? attachments : undefined,
+      };
+      const response = await apiClient.post('/test/inbound', payload);
       setResult(response.data);
       message.success('Test email sent successfully!');
+      setAttachments([]);
       refetch();
     } catch (error: any) {
       message.error(error.message || 'Failed to send test email');
@@ -48,11 +81,25 @@ export const TestEmailPage = () => {
   };
 
   const historyColumns = [
-    { title: 'Timestamp', dataIndex: 'timestamp', key: 'timestamp' },
-    { title: 'Type', dataIndex: 'type', key: 'type' },
+    { title: 'Timestamp', dataIndex: 'timestamp', key: 'timestamp', width: 180 },
+    { title: 'Type', dataIndex: 'type', key: 'type', width: 100 },
     { title: 'Recipient', dataIndex: 'recipient', key: 'recipient' },
-    { title: 'Status', dataIndex: 'status', key: 'status' },
-    { title: 'Message ID', dataIndex: 'messageId', key: 'messageId' },
+    { title: 'Status', dataIndex: 'status', key: 'status', width: 100 },
+    { title: 'Message ID', dataIndex: 'messageId', key: 'messageId', width: 200 },
+    {
+      title: 'Actions',
+      key: 'actions',
+      width: 120,
+      render: (_: any, record: any) => (
+        <Button
+          size="small"
+          icon={<FileSearchOutlined />}
+          onClick={() => push(`/logs?messageId=${record.messageId}`)}
+        >
+          View Logs
+        </Button>
+      ),
+    },
   ];
 
   return (
@@ -89,9 +136,52 @@ export const TestEmailPage = () => {
                   <Form.Item label="Subject" name="subject" rules={[{ required: true }]}>
                     <Input placeholder="Test Subject" />
                   </Form.Item>
-                  <Form.Item label="Body (Text)" name={['body', 'text']} rules={[{ required: true }]}>
-                    <TextArea rows={4} placeholder="Email body..." />
+
+                  <Tabs
+                    defaultActiveKey="text"
+                    items={[
+                      {
+                        key: 'text',
+                        label: 'Text',
+                        children: (
+                          <Form.Item name={['body', 'text']} rules={[{ required: true }]}>
+                            <TextArea rows={6} placeholder="Plain text email body..." />
+                          </Form.Item>
+                        ),
+                      },
+                      {
+                        key: 'html',
+                        label: 'HTML',
+                        children: (
+                          <Form.Item name={['body', 'html']}>
+                            <TextArea rows={6} placeholder="<html>...</html>" />
+                          </Form.Item>
+                        ),
+                      },
+                    ]}
+                  />
+
+                  <Form.Item label="Attachments">
+                    <Upload
+                      beforeUpload={handleFileUpload}
+                      fileList={attachments.map((att, idx) => ({
+                        uid: idx.toString(),
+                        name: att.filename,
+                        status: 'done',
+                        size: att.size,
+                      }))}
+                      onRemove={(file) => {
+                        const index = parseInt(file.uid);
+                        setAttachments(attachments.filter((_, i) => i !== index));
+                      }}
+                    >
+                      <Button icon={<UploadOutlined />}>Upload Attachment</Button>
+                    </Upload>
+                    <div className="text-sm text-gray-500 mt-2">
+                      Max total size: 10 MB. Current: {(attachments.reduce((sum, att) => sum + att.size, 0) / 1024 / 1024).toFixed(2)} MB
+                    </div>
                   </Form.Item>
+
                   <Button type="primary" htmlType="submit" loading={sendingInbound} icon={<SendOutlined />}>
                     Send Test Email
                   </Button>
@@ -115,9 +205,31 @@ export const TestEmailPage = () => {
                   <Form.Item label="Subject" name="subject" rules={[{ required: true }]}>
                     <Input placeholder="Test Subject" />
                   </Form.Item>
-                  <Form.Item label="Body (Text)" name={['body', 'text']} rules={[{ required: true }]}>
-                    <TextArea rows={4} placeholder="Email body..." />
-                  </Form.Item>
+
+                  <Tabs
+                    defaultActiveKey="text"
+                    items={[
+                      {
+                        key: 'text',
+                        label: 'Text',
+                        children: (
+                          <Form.Item name={['body', 'text']} rules={[{ required: true }]}>
+                            <TextArea rows={6} placeholder="Plain text email body..." />
+                          </Form.Item>
+                        ),
+                      },
+                      {
+                        key: 'html',
+                        label: 'HTML',
+                        children: (
+                          <Form.Item name={['body', 'html']}>
+                            <TextArea rows={6} placeholder="<html>...</html>" />
+                          </Form.Item>
+                        ),
+                      },
+                    ]}
+                  />
+
                   <Button type="primary" htmlType="submit" loading={sendingOutbound} icon={<SendOutlined />}>
                     Queue Test Email
                   </Button>
