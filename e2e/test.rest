@@ -1,0 +1,323 @@
+###
+### Mailflow Dashboard API - REST Client Test Suite
+### Environment: Configured via VS Code settings
+###
+### Setup:
+### 1. Copy .vscode/settings.json.example to .vscode/settings.json
+### 2. Update the environment variables in .vscode/settings.json with your credentials:
+###    - api_url: Your API Gateway URL
+###    - jwt_token: Your JWT token
+###    - test_email: Your email address for testing
+### 3. Install REST Client extension in VS Code
+### 4. Select environment (dev) in the REST Client status bar
+### 5. Click "Send Request" above each request
+###
+
+
+
+###############################################################################
+### 1. HEALTH CHECK (No Auth Required)
+###############################################################################
+
+### Get API Health Status
+GET {{api_url}}/health
+Content-Type: application/json
+
+###############################################################################
+### 2. METRICS ENDPOINTS
+###############################################################################
+
+### Get Metrics Summary (24h)
+# Returns summary metrics for inbound/outbound emails, processing times, and queue status
+GET {{api_url}}/metrics/summary
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Inbound Timeseries Data
+# Query parameters:
+# - metric: inbound_received, outbound_sent, error_rate, processing_time
+# - period: 1h, 6h, 24h (default), 7d, 30d
+# - interval: 1m, 5m, 1h (default), 1d
+GET {{api_url}}/metrics/timeseries?metric=inbound_received&period=24h&interval=1h
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Outbound Timeseries Data
+GET {{api_url}}/metrics/timeseries?metric=outbound_sent&period=24h&interval=1h
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Error Rate Timeseries
+GET {{api_url}}/metrics/timeseries?metric=error_rate&period=7d&interval=1h
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Processing Time Timeseries
+GET {{api_url}}/metrics/timeseries?metric=processing_time&period=24h&interval=5m
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+###############################################################################
+### 3. QUEUE ENDPOINTS
+###############################################################################
+
+### List All Queues
+# Returns all SQS queues with message counts and metadata
+GET {{api_url}}/queues
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Messages from App1 Queue
+# Query parameters:
+# - limit: max number of messages to retrieve (max 10, default 10)
+GET {{api_url}}/queues/mailflow-app1-dev/messages?limit=5
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Messages from App2 Queue
+GET {{api_url}}/queues/mailflow-app2-dev/messages?limit=5
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Messages from DLQ
+GET {{api_url}}/queues/mailflow-dlq-dev/messages?limit=10
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Get Messages from Outbound Queue
+GET {{api_url}}/queues/mailflow-outbound-dev/messages?limit=5
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+###############################################################################
+### 4. LOGS ENDPOINTS
+###############################################################################
+
+### Query CloudWatch Logs
+# Query logs from Lambda function for the last hour
+POST {{api_url}}/logs/query
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "logGroup": "/aws/lambda/mailflow-dev",
+  "startTime": "2025-11-03T00:00:00Z",
+  "endTime": "2025-11-04T23:59:59Z",
+  "filterPattern": "ERROR",
+  "limit": 50
+}
+
+### Query Logs - All Levels
+POST {{api_url}}/logs/query
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "logGroup": "/aws/lambda/mailflow-dev",
+  "startTime": "2025-11-04T00:00:00Z",
+  "endTime": "2025-11-04T23:59:59Z",
+  "limit": 100
+}
+
+### Query API Lambda Logs
+POST {{api_url}}/logs/query
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "logGroup": "/aws/lambda/mailflow-api-dev",
+  "startTime": "2025-11-04T00:00:00Z",
+  "endTime": "2025-11-04T23:59:59Z",
+  "limit": 50
+}
+
+###############################################################################
+### 5. STORAGE ENDPOINTS
+###############################################################################
+
+### Get Storage Statistics
+# Returns stats for all S3 buckets (mailflow-raw-emails-dev, mailflow-attachments-dev)
+GET {{api_url}}/storage/stats
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### List Objects in Raw Emails Bucket
+# Query parameters:
+# - limit: max objects to return (max 100, default 20)
+# - prefix: filter by prefix
+GET {{api_url}}/storage/mailflow-raw-emails-dev/objects?limit=20
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### List Objects in Attachments Bucket
+GET {{api_url}}/storage/mailflow-attachments-dev/objects?limit=20
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### List Objects with Prefix Filter
+GET {{api_url}}/storage/mailflow-attachments-dev/objects?limit=10&prefix=2025-11
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+###############################################################################
+### 6. TEST EMAIL ENDPOINTS
+###############################################################################
+
+### Send Test Inbound Email (Plain Text)
+# Sends test email to app1 via SES
+POST {{api_url}}/test/inbound
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "app": "app1",
+  "from": "{{test_from_email}}",
+  "subject": "Test Email from REST Client",
+  "body": {
+    "text": "This is a plain text test email sent via the REST API."
+  },
+  "attachments": []
+}
+
+### Send Test Inbound Email (HTML + Text)
+POST {{api_url}}/test/inbound
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "app": "app2",
+  "from": "{{test_from_email}}",
+  "subject": "Test HTML Email",
+  "body": {
+    "text": "This is the plain text version.",
+    "html": "<html><body><h1>Test HTML Email</h1><p>This is a <strong>test</strong> email with HTML content.</p></body></html>"
+  },
+  "attachments": []
+}
+
+### Send Test Outbound Email
+# Queues email to outbound SQS queue
+POST {{api_url}}/test/outbound
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "from": "app1-dev",
+  "to": "{{test_email}}",
+  "subject": "Test Outbound Email",
+  "body": {
+    "text": "This is a test outbound email sent via the REST API.",
+    "html": "<html><body><p>This is a <strong>test outbound email</strong> sent via the REST API.</p></body></html>"
+  }
+}
+
+### Get Test Email History
+# Returns recent test emails sent via the API
+GET {{api_url}}/test/history
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+###############################################################################
+### 7. CONFIGURATION ENDPOINT
+###############################################################################
+
+### Get System Configuration
+# Returns current system configuration (routing, security, attachments)
+GET {{api_url}}/config
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+###############################################################################
+### 8. ERROR SCENARIOS (for testing)
+###############################################################################
+
+### Test 401 Unauthorized (Invalid Token)
+GET {{api_url}}/metrics/summary
+Authorization: Bearer invalid_token_here
+Content-Type: application/json
+
+### Test 401 Unauthorized (Missing Token)
+GET {{api_url}}/metrics/summary
+Content-Type: application/json
+
+### Test 400 Bad Request (Invalid Metric)
+GET {{api_url}}/metrics/timeseries?metric=invalid_metric&period=24h
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Test 404 Not Found (Invalid Queue)
+GET {{api_url}}/queues/non-existent-queue/messages
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+### Test 400 Bad Request (Missing Required Fields)
+POST {{api_url}}/test/inbound
+Authorization: Bearer {{jwt_token}}
+Content-Type: application/json
+
+{
+  "app": "app1-dev",
+  "from": "",
+  "subject": "",
+  "body": {
+    "text": ""
+  }
+}
+
+###############################################################################
+### 9. BATCH TESTING (Run Multiple Requests)
+###############################################################################
+
+### Full System Check - Run these in sequence
+# 1. Health Check
+# 2. Get Metrics Summary
+# 3. List Queues
+# 4. Get Storage Stats
+# 5. Get Config
+
+###############################################################################
+### NOTES
+###############################################################################
+
+# Authentication:
+# - All endpoints except /health require JWT authentication
+# - JWT token must be passed in Authorization header as "Bearer <token>"
+# - Token must be valid (not expired) and properly signed with JWKS keys
+
+# Rate Limits:
+# - No explicit rate limits enforced currently
+# - Lambda concurrency limits apply (default: 1000 concurrent executions)
+
+# Error Codes:
+# - 200: Success
+# - 400: Bad Request (invalid parameters)
+# - 401: Unauthorized (missing/invalid JWT token)
+# - 404: Not Found (resource doesn't exist)
+# - 500: Internal Server Error
+# - 503: Service Unavailable (health check degraded)
+
+# Time Formats:
+# - All timestamps use ISO 8601 / RFC 3339 format
+# - Example: "2025-11-04T12:00:00Z"
+
+# Queue Names (dev environment):
+# - mailflow-app1-dev
+# - mailflow-app2-dev
+# - mailflow-app1-test-dev
+# - mailflow-app2-test-dev
+# - mailflow-outbound-dev
+# - mailflow-dlq-dev
+# - mailflow-default-dev
+
+# S3 Buckets (dev environment):
+# - mailflow-raw-emails-dev
+# - mailflow-attachments-dev
+# - mailflow-dashboard-dev
+
+# CloudWatch Log Groups:
+# - /aws/lambda/mailflow-dev (worker Lambda)
+# - /aws/lambda/mailflow-api-dev (API Lambda)
+
+# DynamoDB Tables:
+# - mailflow-idempotency-dev
+# - mailflow-test-history-dev
