@@ -4,10 +4,12 @@ import * as aws from "@pulumi/aws";
 export interface DashboardConfig {
     apiUrl: pulumi.Output<string>;
     environment: string;
+    customDomain?: string;
+    certArn?: string;
 }
 
 export function createDashboard(config: DashboardConfig) {
-    const { apiUrl, environment } = config;
+    const { apiUrl, environment, customDomain, certArn } = config;
 
     // Get current AWS account ID
     const caller = aws.getCallerIdentity({});
@@ -164,16 +166,25 @@ export function createDashboard(config: DashboardConfig) {
             },
         },
 
-        viewerCertificate: {
+        viewerCertificate: customDomain && certArn ? {
+            acmCertificateArn: certArn,
+            sslSupportMethod: "sni-only",
+            minimumProtocolVersion: "TLSv1.2_2021",
+        } : {
             cloudfrontDefaultCertificate: true,
         },
+
+        aliases: customDomain ? [customDomain] : undefined,
 
         priceClass: "PriceClass_100", // Use only North America and Europe
     });
 
+    const finalDashboardUrl = customDomain ? pulumi.output(customDomain) : cdn.domainName;
+
     return {
         bucket,
         cdn,
-        dashboardUrl: cdn.domainName,
+        dashboardUrl: finalDashboardUrl,
+        cloudfrontDomainName: cdn.domainName,
     };
 }

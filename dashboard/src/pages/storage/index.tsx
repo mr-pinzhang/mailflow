@@ -1,6 +1,6 @@
 import { useCustom } from '@refinedev/core';
 import { Card, Table, Button, Spin, Row, Col, Statistic, Select } from 'antd';
-import { DownloadOutlined, DatabaseOutlined, FileOutlined, ClockCircleOutlined } from '@ant-design/icons';
+import { DownloadOutlined, DatabaseOutlined, FileOutlined, ClockCircleOutlined, ReloadOutlined } from '@ant-design/icons';
 import { PieChart, Pie, Cell, ResponsiveContainer, Legend, Tooltip } from 'recharts';
 import { useState } from 'react';
 
@@ -12,7 +12,7 @@ export const StoragePage = () => {
     method: 'get',
   });
 
-  const { data: statsData, isLoading: statsLoading } = statsQuery;
+  const { data: statsData, isLoading: statsLoading, refetch: refetchStats } = statsQuery;
   const buckets = statsData?.data?.buckets || [];
   const [selectedBucketName, setSelectedBucketName] = useState<string>('');
 
@@ -34,7 +34,7 @@ export const StoragePage = () => {
     },
   });
 
-  const { data: objectsData, isLoading: objectsLoading } = objectsQuery;
+  const { data: objectsData, isLoading: objectsLoading, refetch: refetchObjects } = objectsQuery;
 
   const objects = objectsData?.data?.objects || [];
 
@@ -71,7 +71,9 @@ export const StoragePage = () => {
   if (statsLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Spin size="large" tip="Loading storage stats..." />
+        <Spin size="large">
+          <div style={{ padding: '50px' }}>Loading storage stats...</div>
+        </Spin>
       </div>
     );
   }
@@ -80,20 +82,32 @@ export const StoragePage = () => {
     <div className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <h1 className="text-2xl font-bold">Storage Browser</h1>
-        {buckets.length > 1 && (
-          <Select
-            style={{ width: 300 }}
-            placeholder="Select bucket"
-            value={selectedBucketName || firstBucket}
-            onChange={setSelectedBucketName}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          {buckets.length > 1 && (
+            <Select
+              style={{ width: 300 }}
+              placeholder="Select bucket"
+              value={selectedBucketName || firstBucket}
+              onChange={setSelectedBucketName}
+            >
+              {buckets.map((bucket: any) => (
+                <Select.Option key={bucket.name} value={bucket.name}>
+                  {bucket.name}
+                </Select.Option>
+              ))}
+            </Select>
+          )}
+          <Button
+            icon={<ReloadOutlined spin={statsLoading || objectsLoading} />}
+            onClick={() => {
+              refetchStats();
+              refetchObjects();
+            }}
+            loading={statsLoading || objectsLoading}
           >
-            {buckets.map((bucket: any) => (
-              <Select.Option key={bucket.name} value={bucket.name}>
-                {bucket.name}
-              </Select.Option>
-            ))}
-          </Select>
-        )}
+            Refresh
+          </Button>
+        </div>
       </div>
 
       {currentBucket && (

@@ -121,7 +121,14 @@ export function createLambdaRole(
     };
 }
 
-export function createApiLambdaRole(environment: string) {
+export function createApiLambdaRole(
+    environment: string,
+    queueArns: pulumi.Output<string>[],
+    bucketArns: pulumi.Output<string>[],
+    tableArns: pulumi.Output<string>[],
+    region: pulumi.Output<string>,
+    accountId: pulumi.Output<string>
+) {
     // IAM role for API Lambda
     const apiLambdaRole = new aws.iam.Role(`mailflow-api-lambda-role-${environment}`, {
         name: `mailflow-api-lambda-role-${environment}`,
@@ -143,86 +150,125 @@ export function createApiLambdaRole(environment: string) {
         },
     });
 
-    // API Lambda execution policy - read-only access to AWS resources
+    // API Lambda execution policy - scoped access to AWS resources
     const apiLambdaPolicy = new aws.iam.RolePolicy(`mailflow-api-lambda-policy-${environment}`, {
         role: apiLambdaRole.id,
-        policy: JSON.stringify({
-            Version: "2012-10-17",
-            Statement: [
-                {
-                    Sid: "CloudWatchLogsAccess",
-                    Effect: "Allow",
-                    Action: [
-                        "logs:CreateLogGroup",
-                        "logs:CreateLogStream",
-                        "logs:PutLogEvents",
-                        "logs:FilterLogEvents",
-                        "logs:DescribeLogGroups",
-                        "logs:DescribeLogStreams",
-                        "logs:GetLogEvents",
+        policy: pulumi
+            .all([queueArns, bucketArns, tableArns, accountId, region])
+            .apply(([queues, buckets, tables, account, reg]) =>
+                JSON.stringify({
+                    Version: "2012-10-17",
+                    Statement: [
+                        {
+                            Sid: "CloudWatchLogsWrite",
+                            Effect: "Allow",
+                            Action: [
+                                "logs:CreateLogGroup",
+                                "logs:CreateLogStream",
+                                "logs:PutLogEvents",
+                            ],
+                            Resource: `arn:aws:logs:${reg}:${account}:log-group:/aws/lambda/mailflow-api-${environment}:*`,
+                        },
+                        {
+                            Sid: "CloudWatchLogsRead",
+                            Effect: "Allow",
+                            Action: [
+                                "logs:FilterLogEvents",
+                                "logs:DescribeLogGroups",
+                                "logs:DescribeLogStreams",
+                                "logs:GetLogEvents",
+                            ],
+                            Resource: `arn:aws:logs:${reg}:${account}:log-group:/aws/lambda/mailflow-*:*`,
+                        },
+                        {
+                            Sid: "S3ListBuckets",
+                            Effect: "Allow",
+                            Action: [
+                                "s3:ListAllMyBuckets",
+                            ],
+                            Resource: "*", // This needs to be * for ListAllMyBuckets
+                        },
+                        {
+                            Sid: "S3BucketAccess",
+                            Effect: "Allow",
+                            Action: [
+                                "s3:ListBucket",
+                                "s3:GetObject",
+                                "s3:GetObjectAttributes",
+                                "s3:ListBucketVersions",
+                                "s3:GetBucketLocation",
+                            ],
+                            Resource: buckets.concat(buckets.map((b: string) => `${b}/*`)),
+                        },
+                        {
+                            Sid: "SQSListQueues",
+                            Effect: "Allow",
+                            Action: [
+                                "sqs:ListQueues",
+                            ],
+                            Resource: "*", // ListQueues requires * resource
+                        },
+                        {
+                            Sid: "SQSQueueAccess",
+                            Effect: "Allow",
+                            Action: [
+                                "sqs:GetQueueAttributes",
+                                "sqs:ReceiveMessage",
+                                "sqs:GetQueueUrl",
+                                "sqs:SendMessage",
+                                "sqs:DeleteMessage",
+                                "sqs:PurgeQueue",
+                            ],
+                            Resource: queues,
+                        },
+                        {
+                            Sid: "CloudWatchMetricsRead",
+                            Effect: "Allow",
+                            Action: [
+                                "cloudwatch:GetMetricData",
+                                "cloudwatch:GetMetricStatistics",
+                                "cloudwatch:ListMetrics",
+                            ],
+                            Resource: "*", // CloudWatch metrics don't support resource-level permissions
+                        },
+                        {
+                            Sid: "CloudWatchMetricsWrite",
+                            Effect: "Allow",
+                            Action: [
+                                "cloudwatch:PutMetricData",
+                            ],
+                            Resource: "*",
+                            Condition: {
+                                StringEquals: {
+                                    "cloudwatch:namespace": "Mailflow",
+                                },
+                            },
+                        },
+                        {
+                            Sid: "DynamoDBAccess",
+                            Effect: "Allow",
+                            Action: [
+                                "dynamodb:GetItem",
+                                "dynamodb:Query",
+                                "dynamodb:Scan",
+                                "dynamodb:DescribeTable",
+                                "dynamodb:PutItem",
+                                "dynamodb:UpdateItem",
+                            ],
+                            Resource: tables,
+                        },
+                        {
+                            Sid: "SESTestEmailAccess",
+                            Effect: "Allow",
+                            Action: [
+                                "ses:SendEmail",
+                                "ses:SendRawEmail",
+                            ],
+                            Resource: `arn:aws:ses:${reg}:${account}:identity/*`,
+                        },
                     ],
-                    Resource: "*",
-                },
-                {
-                    Sid: "S3ReadAccess",
-                    Effect: "Allow",
-                    Action: [
-                        "s3:ListAllMyBuckets",
-                        "s3:ListBucket",
-                        "s3:GetObject",
-                        "s3:GetObjectAttributes",
-                        "s3:ListBucketVersions",
-                        "s3:GetBucketLocation",
-                    ],
-                    Resource: "*",
-                },
-                {
-                    Sid: "SQSAccess",
-                    Effect: "Allow",
-                    Action: [
-                        "sqs:GetQueueAttributes",
-                        "sqs:ReceiveMessage",
-                        "sqs:ListQueues",
-                        "sqs:GetQueueUrl",
-                        "sqs:SendMessage",
-                    ],
-                    Resource: "*",
-                },
-                {
-                    Sid: "CloudWatchMetricsRead",
-                    Effect: "Allow",
-                    Action: [
-                        "cloudwatch:GetMetricData",
-                        "cloudwatch:GetMetricStatistics",
-                        "cloudwatch:ListMetrics",
-                        "cloudwatch:PutMetricData",
-                    ],
-                    Resource: "*",
-                },
-                {
-                    Sid: "DynamoDBAccess",
-                    Effect: "Allow",
-                    Action: [
-                        "dynamodb:GetItem",
-                        "dynamodb:Query",
-                        "dynamodb:Scan",
-                        "dynamodb:DescribeTable",
-                        "dynamodb:PutItem",
-                        "dynamodb:UpdateItem",
-                    ],
-                    Resource: "*",
-                },
-                {
-                    Sid: "SESTestEmailAccess",
-                    Effect: "Allow",
-                    Action: [
-                        "ses:SendEmail",
-                        "ses:SendRawEmail",
-                    ],
-                    Resource: "*",
-                },
-            ],
-        }),
+                })
+            ),
     });
 
     return {

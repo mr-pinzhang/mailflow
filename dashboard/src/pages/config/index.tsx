@@ -1,5 +1,6 @@
 import { useCustom } from '@refinedev/core';
-import { Card, Descriptions, Spin, Alert } from 'antd';
+import { Card, Descriptions, Spin, Alert, Button } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
 
 export const ConfigPage = () => {
   const { query } = useCustom({
@@ -7,7 +8,7 @@ export const ConfigPage = () => {
     method: 'get',
   });
 
-  const { data, isLoading, error } = query;
+  const { data, isLoading, error, refetch } = query;
 
   if (isLoading) return <Spin size="large" />;
   if (error) return <Alert message="Error" description={error.message} type="error" />;
@@ -16,7 +17,16 @@ export const ConfigPage = () => {
 
   return (
     <div className="p-6 space-y-6">
-      <h1 className="text-2xl font-bold">Configuration</h1>
+      <div className="flex justify-between items-center">
+        <h1 className="text-2xl font-bold">Configuration</h1>
+        <Button
+          icon={<ReloadOutlined spin={isLoading} />}
+          onClick={() => refetch()}
+          loading={isLoading}
+        >
+          Refresh
+        </Button>
+      </div>
 
       <Alert
         message="Read-Only Configuration"

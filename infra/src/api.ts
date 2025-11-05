@@ -6,10 +6,12 @@ import * as path from "path";
 export interface ApiGatewayConfig {
     apiLambda: aws.lambda.Function;
     environment: string;
+    customDomain?: string;
+    certArn?: string;
 }
 
 export function createApiGateway(config: ApiGatewayConfig) {
-    const { apiLambda, environment } = config;
+    const { apiLambda, environment, customDomain, certArn } = config;
 
     // 1. Create API Gateway REST API
     const api = new aws.apigateway.RestApi(`mailflow-api-${environment}`, {
@@ -128,10 +130,36 @@ export function createApiGateway(config: ApiGatewayConfig) {
         description: `Mailflow API ${environment} stage`,
     });
 
+    // 12. Custom Domain (if provided)
+    let apiDomainName: aws.apigateway.DomainName | undefined;
+    let basePathMapping: aws.apigateway.BasePathMapping | undefined;
+    let finalApiUrl: pulumi.Output<string>;
+
+    if (customDomain && certArn) {
+        // Create API Gateway custom domain using provided certificate
+        apiDomainName = new aws.apigateway.DomainName(`api-domain-${environment}`, {
+            domainName: customDomain,
+            certificateArn: certArn,
+        });
+
+        // Create base path mapping
+        basePathMapping = new aws.apigateway.BasePathMapping(`api-base-path-${environment}`, {
+            restApi: api.id,
+            stageName: stage.stageName,
+            domainName: apiDomainName.domainName,
+            basePath: "", // Empty string means root path
+        }, { dependsOn: [apiDomainName, stage] });
+
+        finalApiUrl = pulumi.interpolate`${customDomain}`;
+    } else {
+        finalApiUrl = pulumi.interpolate`${api.id}.execute-api.${aws.config.region}.amazonaws.com/${stage.stageName}`;
+    }
+
     return {
         api,
         deployment,
         stage,
-        apiUrl: pulumi.interpolate`${api.id}.execute-api.${aws.config.region}.amazonaws.com/${stage.stageName}`,
+        apiUrl: finalApiUrl,
+        apiDomainTarget: apiDomainName?.cloudfrontDomainName,
     };
 }

@@ -10,3 +10,13 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/* Hide logout button in sidebar */
+.ant-menu-item[data-menu-id$="-logout"] {
+  display: none !important;
+}
+
+/* Alternative selector if the above doesn't work */
+.ant-layout-sider .ant-menu-item:has(.anticon-logout) {
+  display: none !important;
+}

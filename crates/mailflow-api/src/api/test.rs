@@ -1,5 +1,6 @@
 /// Test email endpoints
 use axum::{Json, extract::State};
+use base64::Engine;
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 use tracing::{error, info};
@@ -109,8 +110,57 @@ pub async fn inbound(
         .subject(&req.subject)
         .message_id(Some(message_id.clone()));
 
-    // Build multipart email
-    let email = if let Some(html) = &req.body.html {
+    // Build multipart email with attachments if present
+    let email = if !req.attachments.is_empty() {
+        // Build mixed multipart with body + attachments
+        let mut multipart = if let Some(html) = &req.body.html {
+            // Start with alternative (text + html)
+            lettre::message::MultiPart::mixed().multipart(
+                lettre::message::MultiPart::alternative()
+                    .singlepart(
+                        lettre::message::SinglePart::builder()
+                            .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                            .body(req.body.text.clone()),
+                    )
+                    .singlepart(
+                        lettre::message::SinglePart::builder()
+                            .header(lettre::message::header::ContentType::TEXT_HTML)
+                            .body(html.clone()),
+                    ),
+            )
+        } else {
+            // Start with just text
+            lettre::message::MultiPart::mixed().singlepart(
+                lettre::message::SinglePart::builder()
+                    .header(lettre::message::header::ContentType::TEXT_PLAIN)
+                    .body(req.body.text.clone()),
+            )
+        };
+
+        // Add attachments
+        for attachment in &req.attachments {
+            // Decode base64 data
+            let decoded_data = base64::engine::general_purpose::STANDARD
+                .decode(&attachment.data)
+                .map_err(|e| {
+                    ApiError::BadRequest(format!("Invalid base64 attachment data: {}", e))
+                })?;
+
+            let content_type = attachment.content_type.parse().unwrap_or_else(|_| {
+                lettre::message::header::ContentType::parse("application/octet-stream").unwrap()
+            });
+
+            multipart = multipart.singlepart(
+                lettre::message::Attachment::new(attachment.filename.clone())
+                    .body(decoded_data, content_type),
+            );
+        }
+
+        email_builder.multipart(multipart).map_err(|e| {
+            ApiError::Internal(format!("Failed to build email with attachments: {}", e))
+        })?
+    } else if let Some(html) = &req.body.html {
+        // No attachments, just text + HTML
         email_builder
             .multipart(
                 lettre::message::MultiPart::alternative()
@@ -127,6 +177,7 @@ pub async fn inbound(
             )
             .map_err(|e| ApiError::Internal(format!("Failed to build email: {}", e)))?
     } else {
+        // Simple text email
         email_builder
             .body(req.body.text.clone())
             .map_err(|e| ApiError::Internal(format!("Failed to build email: {}", e)))?

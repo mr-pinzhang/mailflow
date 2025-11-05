@@ -5,7 +5,7 @@ from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 from typing import Optional, List, Dict
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 
@@ -180,7 +180,7 @@ def build_outbound_message(
     return {
         "version": "1.0",
         "correlationId": correlation_id or f"test-{uuid.uuid4()}",
-        "timestamp": datetime.utcnow().isoformat() + "Z",
+        "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
         "source": "e2e-test-suite",
         "email": {
             "from": {"address": from_addr, "name": "E2E Test"},

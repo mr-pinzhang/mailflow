@@ -44,7 +44,21 @@ impl MailParserEmailParser {
         let mut attachments = Vec::new();
         let mut inline_image_index = 0;
 
-        for part in message.parts.iter() {
+        tracing::debug!(
+            total_parts = message.parts.len(),
+            "Extracting attachments from email parts"
+        );
+
+        for (index, part) in message.parts.iter().enumerate() {
+            tracing::debug!(
+                part_index = index,
+                has_attachment_name = part.attachment_name().is_some(),
+                content_type = ?part.content_type(),
+                has_content_id = part.content_id().is_some(),
+                body_type = ?part.body,
+                "Processing email part"
+            );
+
             // Extract traditional attachments (Content-Disposition: attachment)
             if let Some(filename) = part.attachment_name() {
                 let content_type = part
@@ -54,11 +68,23 @@ impl MailParserEmailParser {
                     .to_string();
 
                 if let Some(body_data) = Self::get_part_body(part) {
+                    tracing::debug!(
+                        filename = %filename,
+                        content_type = %content_type,
+                        size = body_data.len(),
+                        "Extracted attachment"
+                    );
+
                     attachments.push(AttachmentData {
                         filename: filename.to_string(),
                         content_type,
                         data: body_data,
                     });
+                } else {
+                    tracing::warn!(
+                        filename = %filename,
+                        "Attachment found but no body data available"
+                    );
                 }
             }
             // Extract inline images (Content-Disposition: inline with Content-ID)
@@ -95,6 +121,11 @@ impl MailParserEmailParser {
                 }
             }
         }
+
+        tracing::info!(
+            attachment_count = attachments.len(),
+            "Extracted attachments from email"
+        );
 
         attachments
     }

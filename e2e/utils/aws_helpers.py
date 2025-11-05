@@ -3,7 +3,7 @@
 import time
 import json
 from typing import Dict, List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import boto3
 
 
@@ -86,9 +86,9 @@ class AWSTestHelper:
         self, log_group: str, filter_pattern: str, minutes: int = 5
     ) -> List[str]:
         """Get recent Lambda logs matching pattern."""
-        end_time = int(datetime.utcnow().timestamp() * 1000)
+        end_time = int(datetime.now(timezone.utc).timestamp() * 1000)
         start_time = int(
-            (datetime.utcnow() - timedelta(minutes=minutes)).timestamp() * 1000
+            (datetime.now(timezone.utc) - timedelta(minutes=minutes)).timestamp() * 1000
         )
 
         try:
@@ -107,7 +107,7 @@ class AWSTestHelper:
         self, metric_name: str, namespace: str = "Mailflow", minutes: int = 5
     ) -> float:
         """Get metric value from CloudWatch."""
-        end_time = datetime.utcnow()
+        end_time = datetime.now(timezone.utc)
         start_time = end_time - timedelta(minutes=minutes)
 
         response = self.cloudwatch.get_metric_statistics(

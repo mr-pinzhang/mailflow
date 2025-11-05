@@ -1,0 +1,14 @@
+{
+  "yaml.schemas": {
+    "https://www.artillery.io/schema.json": []
+  },
+  "rest-client.environmentVariables": {
+    "$shared": {},
+    "dev": {
+      "api_url": "https://YOUR_API_GATEWAY_URL.execute-api.us-east-1.amazonaws.com/v1",
+      "jwt_token": "YOUR_JWT_TOKEN_HERE",
+      "test_email": "your-email@example.com",
+      "test_from_email": "test@your-domain.com"
+    }
+  }
+}

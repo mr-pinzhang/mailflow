@@ -34,19 +34,27 @@ pub async fn handle(event: SesEvent) -> Result<(), MailflowError> {
         if let Err(e) = process_ses_record(&ctx, &security_validator, &record).await {
             error!("Failed to process SES record: {}", e);
 
-            // Send to DLQ with metrics
-            send_error_to_dlq(
-                &*ctx.queue,
-                Some(&metrics),
-                dlq_url.as_deref(),
-                &e,
-                "ses",
-                serde_json::json!({
-                    "message_id": record.ses.mail.message_id,
-                    "recipients": record.ses.receipt.recipients,
-                }),
-            )
-            .await;
+            // For retriable errors, propagate the error so SQS can retry
+            // For permanent errors, send to DLQ manually
+            if e.is_retriable() {
+                error!("Retriable error occurred, propagating to trigger SQS retry");
+                return Err(e);
+            } else {
+                error!("Permanent error occurred, sending to DLQ");
+                // Send to DLQ with metrics
+                send_error_to_dlq(
+                    &*ctx.queue,
+                    Some(&metrics),
+                    dlq_url.as_deref(),
+                    &e,
+                    "ses",
+                    serde_json::json!({
+                        "message_id": record.ses.mail.message_id,
+                        "recipients": record.ses.receipt.recipients,
+                    }),
+                )
+                .await;
+            }
         } else {
             // Record success metrics
             let duration_ms = start.elapsed().as_millis() as f64;

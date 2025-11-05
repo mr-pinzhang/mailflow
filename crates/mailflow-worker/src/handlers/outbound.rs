@@ -61,32 +61,40 @@ pub async fn handle(event: SqsEvent) -> Result<(), MailflowError> {
         if let Err(e) = process_record(&ctx, record.clone()).await {
             error!("Failed to process outbound record: {}", e);
 
-            // Send error to DLQ using common handler
-            send_error_to_dlq(
-                ctx.queue.as_ref(),
-                Some(ctx.metrics.as_ref()),
-                dlq_url.as_deref(),
-                &e,
-                "outbound",
-                serde_json::json!({
-                    "message_id": record.message_id,
-                    "original_message": record.body,
-                }),
-            )
-            .await;
+            // For retriable errors, propagate the error so SQS can retry
+            // For permanent errors, send to DLQ manually and delete message
+            if e.is_retriable() {
+                error!("Retriable error occurred, propagating to trigger SQS retry");
+                return Err(e);
+            } else {
+                error!("Permanent error occurred, sending to DLQ and deleting message");
 
-            // Delete from queue even if failed (already in DLQ or will retry via SQS)
-            if let Err(delete_err) = ctx
-                .queue
-                .delete_message(&ctx.outbound_queue_url, &record.receipt_handle)
-                .await
-            {
-                error!(
-                    receipt_handle = %record.receipt_handle,
-                    error = %delete_err,
-                    "Failed to delete message from outbound queue after processing error. Message may be reprocessed."
-                );
-                // Note: This is logged but not fatal. Idempotency should prevent duplicate sends if reprocessed.
+                // Send error to DLQ using common handler
+                send_error_to_dlq(
+                    ctx.queue.as_ref(),
+                    Some(ctx.metrics.as_ref()),
+                    dlq_url.as_deref(),
+                    &e,
+                    "outbound",
+                    serde_json::json!({
+                        "message_id": record.message_id,
+                        "original_message": record.body,
+                    }),
+                )
+                .await;
+
+                // Delete from queue for permanent errors (already in DLQ)
+                if let Err(delete_err) = ctx
+                    .queue
+                    .delete_message(&ctx.outbound_queue_url, &record.receipt_handle)
+                    .await
+                {
+                    error!(
+                        receipt_handle = %record.receipt_handle,
+                        error = %delete_err,
+                        "Failed to delete message from outbound queue after permanent error. Message may be reprocessed."
+                    );
+                }
             }
         }
     }

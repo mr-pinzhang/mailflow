@@ -66,19 +66,26 @@ pub async fn handle(event: S3Event) -> Result<(), MailflowError> {
         if let Err(e) = process_record(&ctx, record.clone()).await {
             error!("Failed to process record: {}", e);
 
-            // Send error to DLQ using common handler
-            send_error_to_dlq(
-                ctx.queue.as_ref(),
-                Some(ctx.metrics.as_ref()),
-                dlq_url.as_deref(),
-                &e,
-                "inbound",
-                serde_json::json!({
-                    "bucket": record.s3.bucket.name,
-                    "key": record.s3.object.key,
-                }),
-            )
-            .await;
+            // For retriable errors, propagate the error so SQS can retry
+            // For permanent errors, send to DLQ manually
+            if e.is_retriable() {
+                error!("Retriable error occurred, propagating to trigger SQS retry");
+                return Err(e);
+            } else {
+                error!("Permanent error occurred, sending to DLQ");
+                send_error_to_dlq(
+                    ctx.queue.as_ref(),
+                    Some(ctx.metrics.as_ref()),
+                    dlq_url.as_deref(),
+                    &e,
+                    "inbound",
+                    serde_json::json!({
+                        "bucket": record.s3.bucket.name,
+                        "key": record.s3.object.key,
+                    }),
+                )
+                .await;
+            }
         }
     }
 

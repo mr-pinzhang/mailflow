@@ -1,8 +1,16 @@
 /target
 Cargo.lock
-.vscode
+
+# VS Code workspace settings (contains secrets)
+.vscode/settings.json
+
+# Infra assets
 infra/assets/
 *jwks.json
+
+# REST Client local files with secrets
+*.rest.local
+e2e/test.rest.local
 
 # Dashboard
 dashboard/node_modules/

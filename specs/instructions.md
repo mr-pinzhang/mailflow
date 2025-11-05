@@ -188,3 +188,31 @@ mailflow/dashboard on  master [!?⇡] is 📦 v0.2.2 via  v24.10.0
 ## review dashboard code
 
 look at the @specs/0007-dashboard.md and review the code, especially the dashboard code, think ultra hard and see what still missing and could be improved. Put a detailed review report and implementation plan under @specs/reviews/0003-dashboard-review.md.
+
+## improve dashboard implementation
+
+review the current dashboard implementation on both API and UI, think ultra hard and improve usability:
+
+- make sure all styling is consistent and looks good, e.g. for queue detail page, "expand" / "collapse" button overlaps with the message id - do you want to replace the text to an icon?
+- login page should be limited in width, now full width looks ugly
+- in queue detail page, make sure the message makes sense - The receive count in green/red badge looks not meaningful (add help text to explain it?), the message seems to be duplicated. And expand should only expand current message, not all messages.
+- user should be able to purge a queue in queue detail page (need confirmation dialog).
+- pagination doesn't work well, in queue detail page, page size is 10, but it shows 14 messages. while at the top it said "10 messages found", in queue management page, it shows 37 messages. Very inconsistent.
+
+Carefully review all these code and issues thoroughly and also see if there's other issues or improvements could be made. Put a detailed PRD and implementation plan under @specs/reviews/0004-dashboard-implementation-review.md.
+
+## improve dashboard UI
+
+Review the code carefully and think ultra hard on these:
+
+login page looks ugly, make the input box with max width and center the content.
+
+The Dashboard page still didn't have the meaningful data. Review the code that generate metrics and the infra code that related with metrics to make sure proper permission is granted and the whole flow work as expected.
+
+if a message go into a queue and no app is pulling it, the message will be moved to dlq quickly. Please make sure it stay at the queue for 3600s (1 hour) before being moved to dlq.
+
+the style could be greatly improved. Make sure margin/padding/font size/color/etc. are consistent and looks good.
+
+## infra custom domain
+
+We want to use mailflow:dashboardDomain for dashboard UI and mailflow:dashboardApiDomain for API. Read current infra code carefully and update properly to use these custom domains. Dashboard UI should also use the proper API domain which is provided by pulumi output. Think hard and build a concrete solution.

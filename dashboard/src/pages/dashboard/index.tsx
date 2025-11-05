@@ -51,7 +51,9 @@ export const DashboardPage = () => {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <Spin size="large" tip="Loading dashboard..." />
+        <Spin size="large">
+          <div style={{ padding: '50px' }}>Loading dashboard...</div>
+        </Spin>
       </div>
     );
   }
@@ -88,12 +90,25 @@ export const DashboardPage = () => {
   });
 
   return (
-    <div className="p-6 space-y-6">
-      <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Dashboard Overview</h1>
+    <div style={{ padding: '24px', background: '#f5f5f5', minHeight: '100vh' }}>
+      <div style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginBottom: '24px'
+      }}>
+        <h1 style={{
+          fontSize: '28px',
+          fontWeight: '600',
+          margin: 0,
+          color: '#262626'
+        }}>
+          Dashboard Overview
+        </h1>
         <Badge
           status={metrics?.period === '24h' ? 'success' : 'default'}
           text={`Last updated: ${new Date().toLocaleTimeString()}`}
+          style={{ fontSize: '14px' }}
         />
       </div>
 
@@ -104,65 +119,80 @@ export const DashboardPage = () => {
           type="warning"
           showIcon
           icon={<WarningOutlined />}
+          style={{ marginBottom: '24px' }}
         />
       )}
 
-      <Row gutter={[16, 16]}>
+      <Row gutter={[16, 16]} style={{ marginBottom: '24px' }}>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable>
             <Statistic
               title="Total Emails (24h)"
               value={metrics?.inbound?.total + metrics?.outbound?.total || 0}
-              prefix={<MailOutlined />}
-              valueStyle={{ color: '#1890ff' }}
+              prefix={<MailOutlined style={{ fontSize: '20px' }} />}
+              valueStyle={{ color: '#1890ff', fontSize: '28px', fontWeight: '600' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable>
             <Statistic
               title="Processing Rate"
               value={((metrics?.inbound?.rate || 0) + (metrics?.outbound?.rate || 0)).toFixed(2)}
               suffix="emails/min"
-              prefix={<ThunderboltOutlined />}
-              valueStyle={{ color: '#52c41a' }}
+              prefix={<ThunderboltOutlined style={{ fontSize: '20px' }} />}
+              valueStyle={{ color: '#52c41a', fontSize: '28px', fontWeight: '600' }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable>
             <Statistic
               title="Error Rate"
               value={((metrics?.inbound?.errorRate || 0) * 100).toFixed(2)}
               suffix="%"
-              prefix={<ExclamationCircleOutlined />}
-              valueStyle={{ color: (metrics?.inbound?.errorRate || 0) > 0.05 ? '#ff4d4f' : '#52c41a' }}
+              prefix={<ExclamationCircleOutlined style={{ fontSize: '20px' }} />}
+              valueStyle={{
+                color: (metrics?.inbound?.errorRate || 0) > 0.05 ? '#ff4d4f' : '#52c41a',
+                fontSize: '28px',
+                fontWeight: '600'
+              }}
             />
           </Card>
         </Col>
         <Col xs={24} sm={12} lg={6}>
-          <Card>
+          <Card hoverable>
             <Statistic
               title="Active Queues"
               value={metrics?.queues?.active || 0}
-              prefix={<InboxOutlined />}
-              valueStyle={{ color: '#722ed1' }}
+              prefix={<InboxOutlined style={{ fontSize: '20px' }} />}
+              valueStyle={{ color: '#722ed1', fontSize: '28px', fontWeight: '600' }}
             />
           </Card>
         </Col>
       </Row>
 
-      <Card title="Email Processing (24h)" className="mt-4">
+      <Card
+        title={<span style={{ fontSize: '18px', fontWeight: '500' }}>Email Processing (24h)</span>}
+        style={{ borderRadius: '8px' }}
+      >
         {isChartLoading ? (
-          <div className="flex items-center justify-center" style={{ height: 300 }}>
-            <Spin tip="Loading chart data..." />
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            height: 300
+          }}>
+            <Spin size="large">
+              <div style={{ padding: '50px' }}>Loading chart data...</div>
+            </Spin>
           </div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <AreaChart data={chartData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
               <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="timestamp" />
-              <YAxis />
+              <XAxis dataKey="timestamp" style={{ fontSize: '12px' }} />
+              <YAxis style={{ fontSize: '12px' }} />
               <Tooltip />
               <Legend />
               <Area type="monotone" dataKey="inbound" stroke="#1890ff" fill="#1890ff" fillOpacity={0.6} name="Inbound" />

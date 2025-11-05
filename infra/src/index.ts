@@ -1,4 +1,5 @@
 import * as pulumi from "@pulumi/pulumi";
+import * as aws from "@pulumi/aws";
 import { createStorage } from "./storage";
 import { createQueues } from "./queues";
 import { createDatabaseTables } from "./database";
@@ -16,6 +17,9 @@ const domains = config.requireObject<string[]>("domains");
 const apps = config.requireObject<string[]>("apps");
 const allowedSenderDomains = config.getObject<string[]>("allowedSenderDomains") || [];
 const jwtIssuer = config.get("jwtIssuer") || "mailflow";
+const dashboardDomain = config.get("dashboardDomain");
+const dashboardApiDomain = config.get("dashboardApiDomain");
+const certArn = config.get("certArn");
 
 console.log(`Deploying Mailflow infrastructure for environment: ${environment}`);
 console.log(`Apps: ${apps.join(", ")}`);
@@ -81,7 +85,18 @@ const monitoring = createMonitoring({
 });
 
 // 8. Create API Lambda for dashboard
-const apiIam = createApiLambdaRole(environment);
+const region = aws.getRegionOutput().name;
+const accountId = aws.getCallerIdentityOutput().accountId;
+
+const apiIam = createApiLambdaRole(
+    environment,
+    allQueueArns,
+    [storage.bucket.arn, storage.attachmentsBucket.arn],
+    [database.idempotencyTable.arn, database.testHistoryTable.arn],
+    region,
+    accountId
+);
+
 const apiLambda = createApiLambda({
     role: apiIam.role,
     environment,
@@ -95,12 +110,16 @@ const apiLambda = createApiLambda({
 const api = createApiGateway({
     apiLambda: apiLambda.function,
     environment,
+    customDomain: dashboardApiDomain,
+    certArn,
 });
 
 // 10. Create Dashboard (S3 + CloudFront)
 const dashboard = createDashboard({
     apiUrl: api.apiUrl,
     environment,
+    customDomain: dashboardDomain,
+    certArn,
 });
 
 // Exports
@@ -128,25 +147,59 @@ export const appQueueNames = Object.keys(queues.appQueues);
 
 // Dashboard exports
 export const apiLambdaName = apiLambda.function.name;
-export const apiUrl = pulumi.interpolate`https://${api.apiUrl}`;
-export const dashboardUrl = pulumi.interpolate`https://${dashboard.dashboardUrl}`;
+export const apiUrl = api.apiUrl;
+export const dashboardUrl = dashboard.dashboardUrl;
 export const dashboardBucketName = dashboard.bucket.bucket;
+export const cdnDistributionId = dashboard.cdn.id;
+
+// Custom domain exports (if configured)
+export const dashboardDomainConfigured = dashboardDomain || "not configured";
+export const dashboardApiDomainConfigured = dashboardApiDomain || "not configured";
+export const cloudfrontDomainName = dashboard.cloudfrontDomainName;
+export const apiGatewayDomainTarget = api.apiDomainTarget;
 
 // Summary
-export const summary = pulumi.interpolate`
+export const summary = pulumi.all([
+    lambda.function.name,
+    apiLambda.function.name,
+    storage.bucket.bucket,
+    queues.outboundQueue.name,
+    dashboard.dashboardUrl,
+    api.apiUrl,
+    dashboard.cloudfrontDomainName,
+    api.apiDomainTarget
+]).apply(([workerLambda, apiLambdaFunc, rawBucket, outboundQ, dashUrl, apiUrlVal, cfDomain, apiTarget]) => {
+    let dnsInstructions = "";
+
+    if (dashboardDomain) {
+        dnsInstructions += `\nDNS Configuration Required:\n`;
+        dnsInstructions += `  Dashboard Domain (${dashboardDomain}):\n`;
+        dnsInstructions += `    Create CNAME record: ${dashboardDomain} -> ${cfDomain}\n`;
+    }
+
+    if (dashboardApiDomain && apiTarget) {
+        if (!dnsInstructions) dnsInstructions += `\nDNS Configuration Required:\n`;
+        dnsInstructions += `  API Domain (${dashboardApiDomain}):\n`;
+        dnsInstructions += `    Create CNAME record: ${dashboardApiDomain} -> ${apiTarget}\n`;
+    }
+
+    return `
 Mailflow Infrastructure Deployed Successfully!
 
 Environment: ${environment}
 Apps: ${appQueueNames.join(", ")}
 Domains: ${domains.join(", ")}
 
-Worker Lambda: ${lambda.function.name}
-API Lambda: ${apiLambda.function.name}
-Raw Emails Bucket: ${storage.bucket.bucket}
-Outbound Queue: ${queues.outboundQueue.name}
+Worker Lambda: ${workerLambda}
+API Lambda: ${apiLambdaFunc}
+Raw Emails Bucket: ${rawBucket}
+Outbound Queue: ${outboundQ}
 
-Dashboard URL: https://${dashboard.dashboardUrl}
-API URL: https://${api.apiUrl}
+Dashboard URL: https://${dashUrl}
+API URL: https://${apiUrlVal}
+${dnsInstructions}
+To deploy dashboard:
+  make dashboard-build dashboard-deploy
 
 To send test email:
   aws ses send-email --from test@${domains[0]} --destination ToAddresses=_${appQueueNames[0]}@${domains[0]} --message "Subject={Data=Test},Body={Text={Data=Hello}}"
@@ -155,7 +208,8 @@ To check app queue:
   aws sqs receive-message --queue-url <queue-url>
 
 To access dashboard:
-  1. Open https://${dashboard.dashboardUrl}
+  1. Open https://${dashUrl}
   2. Get JWT token from your identity provider
   3. Set Authorization header: Bearer <token>
 `;
+});

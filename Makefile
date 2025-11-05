@@ -1,5 +1,9 @@
 .PHONY: build test lint fmt clean check lambda deploy-infra help
 
+AWS_REGION := us-east-1
+AWS_PROFILE := default
+ENVIRONMENT := dev
+
 # Default target
 all: check build
 
@@ -43,34 +47,12 @@ lambda:
 	@echo ""
 	@mkdir -p infra/assets
 	@echo "📦 Building mailflow-worker..."
-	@CARGO_TARGET_DIR=./target cargo lambda build --release --arm64 --package mailflow-worker
-	@cp target/lambda/bootstrap/bootstrap infra/assets/bootstrap
-	@cd infra/assets && zip -j mailflow-worker.zip bootstrap && rm bootstrap
+	@CARGO_TARGET_DIR=./target cargo lambda build --release --arm64 --package mailflow-worker --output-format zip
+	@cp target/lambda/bootstrap/bootstrap.zip infra/assets/mailflow-worker.zip
 	@echo ""
 	@echo "📦 Building mailflow-api..."
-	@CARGO_TARGET_DIR=./target cargo lambda build --release --arm64 --package mailflow-api
-	@cp target/lambda/bootstrap/bootstrap infra/assets/bootstrap
-	@cd infra/assets && zip -j mailflow-api.zip bootstrap && rm bootstrap
-	@echo ""
-	@echo "✅ Lambda functions packaged:"
-	@ls -lh infra/assets/*.zip
-	@echo ""
-	@echo "To deploy: cd infra && pulumi up"
-
-# Build for AWS Lambda (x86_64) - both worker and API
-lambda-x86:
-	@echo "Building Mailflow Lambda functions for x86_64..."
-	@echo ""
-	@mkdir -p infra/assets
-	@echo "📦 Building mailflow-worker..."
-	@CARGO_TARGET_DIR=./target cargo lambda build --release --x86-64 --package mailflow-worker
-	@cp target/lambda/bootstrap/bootstrap infra/assets/bootstrap
-	@cd infra/assets && zip -j mailflow-worker.zip bootstrap && rm bootstrap
-	@echo ""
-	@echo "📦 Building mailflow-api..."
-	@CARGO_TARGET_DIR=./target cargo lambda build --release --x86-64 --package mailflow-api
-	@cp target/lambda/bootstrap/bootstrap infra/assets/bootstrap
-	@cd infra/assets && zip -j mailflow-api.zip bootstrap && rm bootstrap
+	@CARGO_TARGET_DIR=./target cargo lambda build --release --arm64 --package mailflow-api --output-format zip
+	@cp target/lambda/bootstrap/bootstrap.zip infra/assets/mailflow-api.zip
 	@echo ""
 	@echo "✅ Lambda functions packaged:"
 	@ls -lh infra/assets/*.zip
@@ -80,15 +62,23 @@ lambda-x86:
 # Build dashboard frontend
 dashboard-build:
 	@echo "Building dashboard frontend..."
-	@cd dashboard && npm install && npm run build
+	@cd infra && API_URL=$$(pulumi stack output apiUrl) && \
+		cd ../dashboard && \
+		echo "VITE_API_URL=https://$$API_URL" > .env.production && \
+		yarn install && yarn build
 	@echo "✅ Dashboard built to dashboard/dist/"
 
 # Deploy dashboard to S3
 dashboard-deploy: dashboard-build
 	@echo "Deploying dashboard to S3..."
-	@aws s3 sync dashboard/dist/ s3://mailflow-dashboard-$(ENVIRONMENT)/ --delete
-	@echo "✅ Dashboard deployed to S3"
-	@echo "Note: CloudFront cache may need to be invalidated"
+	@cd infra && \
+		BUCKET_NAME=$$(pulumi stack output dashboardBucketName) && \
+		DIST_ID=$$(pulumi stack output cdnDistributionId) && \
+		echo "Bucket: $$BUCKET_NAME" && \
+		echo "Distribution ID: $$DIST_ID" && \
+		aws s3 sync ../dashboard/dist/ "s3://$$BUCKET_NAME/" --delete --region $(AWS_REGION) --profile $(AWS_PROFILE) && \
+		aws cloudfront create-invalidation --distribution-id $$DIST_ID --paths "/*" --region $(AWS_REGION) --profile $(AWS_PROFILE)
+	@echo "✅ Dashboard deployed to S3 and CloudFront cache invalidated"
 
 # Deploy infrastructure with Pulumi
 deploy-infra: lambda

@@ -12,3 +12,9 @@ config:
     secure: AAABAEAmiM/9pL4XHNIsKGi7hC0Ap1Z1LOQSlcL+xxa5OQUAeLoLhR16fJw3dodHqkYzRa1ChpH4yOXbTjiGwYdxDqz7YN3RZcpMPxBvfzuByan5
   aws:profile:
     secure: AAABADf0A1G7j2HZ2+iTygagGvFDMiTD1Nooef1DAlFsBmD3AE/dxeKwRCjD4dVSVZDPfwg=
+  mailflow:dashboardDomain:
+    secure: AAABAArCieYk1aAKwHxviiiJkwLgXjhma5t8j/lmTuARfu+Sd4SGFg1slDqWFBdtmTbBFSRFwTUhnt2xfaswGg==
+  mailflow:dashboardApiDomain:
+    secure: AAABAEJqYOsHVddSD+acWqlUPdYPDkmgCdqFgnv/OlyYz/Rkv7Jryw4HvSkpLq6zB3SbtMdVQWGISvZEmS/ZHHAnmZk=
+  mailflow:certArn:
+    secure: AAABAGwnjy3mp0v51fL0yG6Ul66non7En2gOAYJWSYmY50QlzZPH+7YIKsegVrzoqp9o6wszEZzKt3roA/G4pkpqfyyf0o5abdKA2dtuPd5fgfGFzHeTMpldkDDG0ddNDRjVjTa4UoUg4dpGM+wgOoPEcg==

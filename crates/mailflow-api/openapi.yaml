@@ -1,0 +1,759 @@
+openapi: 3.0.3
+info:
+  title: Mailflow Dashboard API
+  description: |
+    REST API for the Mailflow email processing system dashboard.
+
+    This API provides endpoints for:
+    - Queue management (list, view messages, purge, delete, re-drive)
+    - CloudWatch metrics (summary, timeseries)
+    - CloudWatch logs (query)
+    - S3 storage (browse, stats, download)
+    - Configuration (view system settings)
+    - Test emails (send inbound/outbound test emails)
+
+    ## Authentication
+    All endpoints (except /health) require JWT authentication via the Authorization header:
+    ```
+    Authorization: Bearer <jwt-token>
+    ```
+
+    ## Tracing
+    All requests are traced with correlation IDs for debugging:
+    - `x-correlation-id`: Client-provided or auto-generated correlation ID
+    - `x-request-id`: Server-generated request ID (unique per request)
+
+  version: 0.3.0
+  contact:
+    name: Mailflow Team
+    url: https://github.com/yourusername/mailflow
+  license:
+    name: MIT
+
+servers:
+  - url: https://api.mailflow.example.com/v1
+    description: Production API
+  - url: http://localhost:3000/v1
+    description: Local development
+
+tags:
+  - name: health
+    description: Health check endpoints
+  - name: queues
+    description: SQS queue management
+  - name: metrics
+    description: CloudWatch metrics
+  - name: logs
+    description: CloudWatch logs
+  - name: storage
+    description: S3 storage browser
+  - name: test
+    description: Test email sending
+  - name: config
+    description: System configuration
+
+security:
+  - BearerAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [health]
+      summary: Health check
+      description: Check if the API is running. No authentication required.
+      security: []
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: "ok"
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /queues:
+    get:
+      tags: [queues]
+      summary: List all SQS queues
+      description: Returns a list of all SQS queues with their attributes
+      responses:
+        '200':
+          description: List of queues
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  queues:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/QueueInfo'
+
+  /queues/{name}/messages:
+    get:
+      tags: [queues]
+      summary: Get messages from a queue
+      description: Retrieves up to 10 messages from the specified queue (peek mode, doesn't delete)
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Queue name
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 10
+            maximum: 10
+          description: Maximum number of messages to retrieve (max 10)
+      responses:
+        '200':
+          description: Messages retrieved successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MessagesResponse'
+
+  /queues/{name}/purge:
+    post:
+      tags: [queues]
+      summary: Purge all messages from a queue
+      description: Deletes all messages in the queue. This operation cannot be undone.
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Queue name
+      responses:
+        '200':
+          description: Queue purged successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /queues/{name}/messages/delete:
+    post:
+      tags: [queues]
+      summary: Delete a specific message
+      description: Deletes a single message from the queue using its receipt handle
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Queue name
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiptHandle]
+              properties:
+                receiptHandle:
+                  type: string
+                  description: Receipt handle of the message to delete
+      responses:
+        '200':
+          description: Message deleted successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /queues/{name}/messages/redrive:
+    post:
+      tags: [queues]
+      summary: Re-drive a message from DLQ to main queue
+      description: Moves a message from a dead letter queue back to the main processing queue
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Source queue name (DLQ)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [receiptHandle, body, targetQueueName]
+              properties:
+                receiptHandle:
+                  type: string
+                  description: Receipt handle of the message
+                body:
+                  type: string
+                  description: Message body to send to target queue
+                targetQueueName:
+                  type: string
+                  description: Target queue name (main queue)
+      responses:
+        '200':
+          description: Message moved successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+
+  /metrics/summary:
+    get:
+      tags: [metrics]
+      summary: Get metrics summary
+      description: Returns a summary of email processing metrics for the last 24 hours
+      responses:
+        '200':
+          description: Metrics summary
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricsSummary'
+
+  /metrics/timeseries:
+    get:
+      tags: [metrics]
+      summary: Get timeseries metrics
+      description: Returns timeseries data for a specific metric
+      parameters:
+        - name: metric
+          in: query
+          required: true
+          schema:
+            type: string
+            enum: [inbound_received, outbound_sent, error_rate, processing_time]
+          description: Metric to retrieve
+        - name: period
+          in: query
+          schema:
+            type: string
+            enum: [1h, 6h, 24h, 7d, 30d]
+            default: 24h
+          description: Time period
+        - name: interval
+          in: query
+          schema:
+            type: string
+            enum: [1m, 5m, 1h, 1d]
+            default: 1h
+          description: Data point interval
+      responses:
+        '200':
+          description: Timeseries data
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  datapoints:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/DataPoint'
+
+  /logs/query:
+    post:
+      tags: [logs]
+      summary: Query CloudWatch logs
+      description: Search CloudWatch logs with optional filter pattern
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LogQueryRequest'
+      responses:
+        '200':
+          description: Log entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  logs:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LogEntry'
+                  nextToken:
+                    type: string
+                    nullable: true
+
+  /storage/stats:
+    get:
+      tags: [storage]
+      summary: Get storage statistics
+      description: Returns statistics for all mailflow S3 buckets
+      responses:
+        '200':
+          description: Storage statistics
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  buckets:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/BucketStats'
+
+  /storage/{bucket}/objects:
+    get:
+      tags: [storage]
+      summary: List objects in a bucket
+      description: Returns a list of objects in the specified S3 bucket
+      parameters:
+        - name: bucket
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Bucket name
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+          description: Maximum number of objects to return
+        - name: prefix
+          in: query
+          schema:
+            type: string
+          description: Object key prefix to filter by
+      responses:
+        '200':
+          description: List of S3 objects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  objects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/S3Object'
+
+  /test/inbound:
+    post:
+      tags: [test]
+      summary: Send test inbound email
+      description: Sends a test email via SES to the inbound handler
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestInboundRequest'
+      responses:
+        '200':
+          description: Test email sent
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messageId:
+                    type: string
+
+  /test/outbound:
+    post:
+      tags: [test]
+      summary: Queue test outbound email
+      description: Queues a test outbound email to the SQS queue
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TestOutboundRequest'
+      responses:
+        '200':
+          description: Test email queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  messageId:
+                    type: string
+
+  /test/history:
+    get:
+      tags: [test]
+      summary: Get test email history
+      description: Returns history of test emails sent
+      responses:
+        '200':
+          description: Test history
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  history:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/TestHistoryEntry'
+
+  /config:
+    get:
+      tags: [config]
+      summary: Get system configuration
+      description: Returns the current system configuration (read-only)
+      responses:
+        '200':
+          description: System configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SystemConfig'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT token from authentication provider
+
+  schemas:
+    QueueInfo:
+      type: object
+      properties:
+        name:
+          type: string
+          example: "mailflow-app1-inbound"
+        url:
+          type: string
+          example: "https://sqs.us-east-1.amazonaws.com/123456789/mailflow-app1-inbound"
+        type:
+          type: string
+          enum: [inbound, outbound, dlq]
+        messageCount:
+          type: integer
+          description: Approximate number of messages in queue
+        messagesInFlight:
+          type: integer
+          description: Approximate number of messages being processed
+        oldestMessageAge:
+          type: integer
+          nullable: true
+          description: Age of oldest message in seconds
+        lastActivity:
+          type: string
+          nullable: true
+          format: date-time
+
+    MessageInfo:
+      type: object
+      properties:
+        messageId:
+          type: string
+        receiptHandle:
+          type: string
+        body:
+          type: string
+        preview:
+          type: string
+          description: Human-readable preview of message content
+        attributes:
+          type: object
+          description: SQS message attributes
+          properties:
+            SentTimestamp:
+              type: string
+            ApproximateReceiveCount:
+              type: string
+            ApproximateFirstReceiveTimestamp:
+              type: string
+
+    MessagesResponse:
+      type: object
+      properties:
+        queueName:
+          type: string
+        messages:
+          type: array
+          items:
+            $ref: '#/components/schemas/MessageInfo'
+        totalCount:
+          type: integer
+          description: Total number of messages in queue
+        queueInfo:
+          $ref: '#/components/schemas/QueueInfo'
+          nullable: true
+
+    MetricsSummary:
+      type: object
+      properties:
+        period:
+          type: string
+          example: "24h"
+        inbound:
+          type: object
+          properties:
+            total:
+              type: integer
+            rate:
+              type: number
+            errorRate:
+              type: number
+        outbound:
+          type: object
+          properties:
+            total:
+              type: integer
+            rate:
+              type: number
+        queues:
+          type: object
+          properties:
+            active:
+              type: integer
+            dlqMessages:
+              type: integer
+
+    DataPoint:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          type: number
+
+    LogEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+        message:
+          type: string
+        level:
+          type: string
+          enum: [ERROR, WARN, INFO, DEBUG]
+        context:
+          type: object
+          additionalProperties: true
+
+    LogQueryRequest:
+      type: object
+      required: [logGroup, startTime, endTime]
+      properties:
+        logGroup:
+          type: string
+          example: "/aws/lambda/mailflow-dev"
+        startTime:
+          type: string
+          format: date-time
+        endTime:
+          type: string
+          format: date-time
+        filterPattern:
+          type: string
+          nullable: true
+          description: CloudWatch Logs filter pattern
+        limit:
+          type: integer
+          default: 100
+          maximum: 10000
+
+    BucketStats:
+      type: object
+      properties:
+        name:
+          type: string
+        objectCount:
+          type: integer
+        totalSizeBytes:
+          type: integer
+        oldestObject:
+          type: string
+          format: date-time
+          nullable: true
+        newestObject:
+          type: string
+          format: date-time
+          nullable: true
+        contentTypeBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              contentType:
+                type: string
+              count:
+                type: integer
+              totalSizeBytes:
+                type: integer
+
+    S3Object:
+      type: object
+      properties:
+        key:
+          type: string
+        size:
+          type: integer
+        lastModified:
+          type: string
+        presignedUrl:
+          type: string
+          description: Presigned URL for downloading (7 day expiration)
+
+    TestInboundRequest:
+      type: object
+      required: [app, from, subject, body]
+      properties:
+        app:
+          type: string
+          example: "app1"
+        from:
+          type: string
+          format: email
+        subject:
+          type: string
+        body:
+          type: object
+          properties:
+            text:
+              type: string
+            html:
+              type: string
+        attachments:
+          type: array
+          items:
+            type: object
+            properties:
+              filename:
+                type: string
+              contentType:
+                type: string
+              data:
+                type: string
+                format: byte
+                description: Base64-encoded attachment data
+
+    TestOutboundRequest:
+      type: object
+      required: [app, to, subject, body]
+      properties:
+        app:
+          type: string
+          example: "app1"
+        to:
+          type: string
+          format: email
+        subject:
+          type: string
+        body:
+          type: object
+          properties:
+            text:
+              type: string
+            html:
+              type: string
+
+    TestHistoryEntry:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [inbound, outbound]
+        recipient:
+          type: string
+        status:
+          type: string
+        messageId:
+          type: string
+
+    SystemConfig:
+      type: object
+      properties:
+        version:
+          type: string
+        source:
+          type: string
+        attachments:
+          type: object
+          properties:
+            bucket:
+              type: string
+            maxSize:
+              type: integer
+        security:
+          type: object
+          properties:
+            requireSpf:
+              type: boolean
+            requireDkim:
+              type: boolean
+            requireDmarc:
+              type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+          description: Error message
+        code:
+          type: string
+          description: Error code
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid JWT token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    ServerError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

@@ -91,13 +91,21 @@ pub async fn summary(
     let inbound_rate = inbound_total / minutes_in_period;
     let outbound_rate = outbound_total / minutes_in_period;
 
-    // Get error counts
-    let inbound_errors = get_metric_sum(&ctx, "InboundErrors", &start_time, &end_time)
-        .await
-        .unwrap_or(0.0);
-    let outbound_errors = get_metric_sum(&ctx, "OutboundErrors", &start_time, &end_time)
-        .await
-        .unwrap_or(0.0);
+    // Get error counts - query "Errors" metric with Handler dimension
+    let inbound_errors =
+        get_metric_sum_with_dimension(&ctx, "Errors", "Handler", "inbound", &start_time, &end_time)
+            .await
+            .unwrap_or(0.0);
+    let outbound_errors = get_metric_sum_with_dimension(
+        &ctx,
+        "Errors",
+        "Handler",
+        "outbound",
+        &start_time,
+        &end_time,
+    )
+    .await
+    .unwrap_or(0.0);
 
     let inbound_error_rate = if inbound_total > 0.0 {
         inbound_errors / inbound_total
@@ -168,16 +176,20 @@ pub async fn summary(
     Ok(Json(MetricsSummaryResponse {
         period: "24h".to_string(),
         inbound: InboundMetrics {
-            total: inbound_total,
-            rate: inbound_rate,
-            error_rate: inbound_error_rate,
+            total: inbound_total.max(0.0),
+            rate: inbound_rate.max(0.0),
+            error_rate: inbound_error_rate.max(0.0),
         },
         outbound: OutboundMetrics {
-            total: outbound_total,
-            rate: outbound_rate,
-            error_rate: outbound_error_rate,
+            total: outbound_total.max(0.0),
+            rate: outbound_rate.max(0.0),
+            error_rate: outbound_error_rate.max(0.0),
         },
-        processing: ProcessingMetrics { p50, p95, p99 },
+        processing: ProcessingMetrics {
+            p50: p50.max(0.0),
+            p95: p95.max(0.0),
+            p99: p99.max(0.0),
+        },
         queues: QueueMetrics {
             active: active_queues,
             dlq_messages,
@@ -260,6 +272,49 @@ async fn get_metric_sum(
         .await
         .map_err(|e| {
             error!("Failed to get metric {}: {}", metric_name, e);
+            ApiError::Aws(e.to_string())
+        })?;
+
+    let sum: f64 = result.datapoints().iter().filter_map(|dp| dp.sum()).sum();
+
+    Ok(sum)
+}
+
+/// Helper: Get sum of a metric with dimension filter over a time period
+async fn get_metric_sum_with_dimension(
+    ctx: &ApiContext,
+    metric_name: &str,
+    dimension_name: &str,
+    dimension_value: &str,
+    start_time: &chrono::DateTime<chrono::Utc>,
+    end_time: &chrono::DateTime<chrono::Utc>,
+) -> Result<f64, ApiError> {
+    use aws_sdk_cloudwatch::types::Dimension;
+
+    let dimension = Dimension::builder()
+        .name(dimension_name)
+        .value(dimension_value)
+        .build();
+
+    let result = ctx
+        .cloudwatch_client
+        .get_metric_statistics()
+        .namespace("Mailflow")
+        .metric_name(metric_name)
+        .dimensions(dimension)
+        .start_time(aws_smithy_types::DateTime::from_secs(
+            start_time.timestamp(),
+        ))
+        .end_time(aws_smithy_types::DateTime::from_secs(end_time.timestamp()))
+        .period(3600) // 1 hour
+        .statistics(Statistic::Sum)
+        .send()
+        .await
+        .map_err(|e| {
+            error!(
+                "Failed to get metric {} with dimension {}={}: {}",
+                metric_name, dimension_name, dimension_value, e
+            );
             ApiError::Aws(e.to_string())
         })?;
 

@@ -22,6 +22,18 @@ pub enum ApiError {
     #[error("Bad request: {0}")]
     BadRequest(String),
 
+    #[error("Validation error: {0}")]
+    Validation(String),
+
+    #[error("Conflict: {0}")]
+    Conflict(String),
+
+    #[error("Too many requests: {0}")]
+    TooManyRequests(String),
+
+    #[error("Service unavailable: {0}")]
+    ServiceUnavailable(String),
+
     #[error("Internal server error: {0}")]
     Internal(String),
 
@@ -36,9 +48,25 @@ impl IntoResponse for ApiError {
             ApiError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg.clone(), "FORBIDDEN"),
             ApiError::NotFound(msg) => (StatusCode::NOT_FOUND, msg.clone(), "NOT_FOUND"),
             ApiError::BadRequest(msg) => (StatusCode::BAD_REQUEST, msg.clone(), "BAD_REQUEST"),
+            ApiError::Validation(msg) => (
+                StatusCode::UNPROCESSABLE_ENTITY,
+                msg.clone(),
+                "VALIDATION_ERROR",
+            ),
+            ApiError::Conflict(msg) => (StatusCode::CONFLICT, msg.clone(), "CONFLICT"),
+            ApiError::TooManyRequests(msg) => (
+                StatusCode::TOO_MANY_REQUESTS,
+                msg.clone(),
+                "TOO_MANY_REQUESTS",
+            ),
+            ApiError::ServiceUnavailable(msg) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                msg.clone(),
+                "SERVICE_UNAVAILABLE",
+            ),
             ApiError::Internal(msg) => {
                 // Log the actual error but return generic message
-                error!("Internal error: {}", msg);
+                error!(error = %msg, "Internal error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
                     "An internal error occurred".to_string(),
@@ -47,10 +75,10 @@ impl IntoResponse for ApiError {
             }
             ApiError::Aws(msg) => {
                 // Log the actual AWS error but return generic message
-                error!("AWS service error: {}", msg);
+                error!(error = %msg, "AWS service error");
                 (
                     StatusCode::INTERNAL_SERVER_ERROR,
-                    "A service error occurred".to_string(),
+                    "A service error occurred. Please try again.".to_string(),
                     "SERVICE_ERROR",
                 )
             }
@@ -59,6 +87,7 @@ impl IntoResponse for ApiError {
         let body = Json(json!({
             "error": error_message,
             "code": error_code,
+            "timestamp": chrono::Utc::now().to_rfc3339(),
         }));
 
         (status, body).into_response()

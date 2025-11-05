@@ -3,6 +3,7 @@
 /// This module contains the REST API handlers for the Mailflow dashboard.
 pub mod api;
 pub mod auth;
+pub mod constants;
 pub mod context;
 pub mod error;
 pub mod middleware;
@@ -36,6 +37,15 @@ pub async fn handler(ctx: Arc<ApiContext>, event: Request) -> Result<Response<Bo
         // Queue endpoints
         .route("/queues", get(api::queues::list))
         .route("/queues/{name}/messages", get(api::queues::messages))
+        .route(
+            "/queues/{name}/messages/delete",
+            post(api::queues::delete_message),
+        )
+        .route(
+            "/queues/{name}/messages/redrive",
+            post(api::queues::redrive_message),
+        )
+        .route("/queues/{name}/purge", post(api::queues::purge))
         // Logs endpoint
         .route("/logs/query", post(api::logs::query))
         // Storage endpoints
@@ -63,7 +73,8 @@ pub async fn handler(ctx: Arc<ApiContext>, event: Request) -> Result<Response<Bo
     // Build the main router with v1 nested
     let app = Router::new()
         .nest("/v1", v1_router)
-        // Add observability middleware (logging + metrics)
+        // Add observability middleware (tracing + logging + metrics)
+        .route_layer(axum_middleware::from_fn(middleware::tracing_middleware))
         .route_layer(axum_middleware::from_fn_with_state(
             Arc::clone(&ctx),
             middleware::logging_middleware,

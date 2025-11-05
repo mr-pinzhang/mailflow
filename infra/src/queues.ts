@@ -25,13 +25,12 @@ export function createQueues(environment: string, apps: string[]): QueueResource
     for (const appName of apps) {
         const queue = new aws.sqs.Queue(`mailflow-${appName}-${environment}`, {
             name: `mailflow-${appName}-${environment}`,
-            visibilityTimeoutSeconds: 300,
+            visibilityTimeoutSeconds: 300, // 5 minutes - reasonable for external consumers
             messageRetentionSeconds: 1209600, // 14 days
             receiveWaitTimeSeconds: 20, // Long polling
-            redrivePolicy: pulumi.jsonStringify({
-                deadLetterTargetArn: dlq.arn,
-                maxReceiveCount: 5,
-            }),
+            // NO redrive policy - app queues are for external consumers, not Lambda processing
+            // Removed via AWS CLI: aws sqs set-queue-attributes --queue-url <url> --attributes RedrivePolicy=''
+            // Dashboard peeking and monitoring will not trigger DLQ movement
             tags: {
                 Environment: environment,
                 Service: "mailflow",
@@ -45,12 +44,12 @@ export function createQueues(environment: string, apps: string[]): QueueResource
     // Outbound queue (shared by all apps)
     const outboundQueue = new aws.sqs.Queue(`mailflow-outbound-${environment}`, {
         name: `mailflow-outbound-${environment}`,
-        visibilityTimeoutSeconds: 300,
+        visibilityTimeoutSeconds: 3600, // 1 hour - message stays invisible for this duration after being received
         messageRetentionSeconds: 1209600,
         receiveWaitTimeSeconds: 20,
         redrivePolicy: pulumi.jsonStringify({
             deadLetterTargetArn: dlq.arn,
-            maxReceiveCount: 5,
+            maxReceiveCount: 3, // Messages will go to DLQ after 3 failed attempts (3 hours total)
         }),
         tags: {
             Environment: environment,
@@ -61,7 +60,7 @@ export function createQueues(environment: string, apps: string[]): QueueResource
     // Default queue (for emails not matching any app pattern)
     const defaultQueue = new aws.sqs.Queue(`mailflow-default-${environment}`, {
         name: `mailflow-default-${environment}`,
-        visibilityTimeoutSeconds: 300,
+        visibilityTimeoutSeconds: 3600, // 1 hour - consistent with other queues
         messageRetentionSeconds: 1209600,
         tags: {
             Environment: environment,
